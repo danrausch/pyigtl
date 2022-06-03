@@ -470,6 +470,74 @@ class TransformMessage(MessageBase):
                                   [values[2], values[5], values[8], values[11]],
                                   [0, 0, 0, 1]])
 
+class TData:
+    def __init__(self, name='', type='', matrix=None):
+        self.name = name
+        self.type = type
+
+        if matrix is not None:
+            try:
+                self.matrix = np.asarray(matrix, dtype=np.float32)
+            except Exception:
+                raise ValueError("Invalid transform matrix (must be convertible to numpy array)")
+            matrix_dimension = len(self.matrix.shape)
+            if matrix_dimension != 2:
+                raise ValueError("Invalid transorm matrix dimension {0} (2 is required)".format(matrix_dimension))
+            if self.matrix.shape != (4, 4):
+                raise ValueError("Invalid transorm matrix shape {0} (4x4 is required)".format(self.matrix.shape))
+        else:
+            self.matrix = np.eye(4, dtype=np.float32)
+
+class TDataMessage(MessageBase):
+    def __init__(self, data=[], timestamp=None, device_name=None):
+        """
+        Transform package
+        matrix: 4x4 homogeneous transformation matrix as numpy array
+        timestamp: milliseconds since 1970
+        device_name: name of the tool
+        """
+
+        MessageBase.__init__(self, timestamp=timestamp, device_name=device_name)
+        self._message_type = "TDATA"
+        self._data = data
+
+        self._valid_message = True
+
+    def content_asstring(self):
+        s = ''
+        count = 0
+        for tdata in self._data:
+            s += 'Name_{0} = {1}\n'.format(str(count), tdata.name)
+            s += 'Type_{0} = {1}\n'.format(str(count), tdata.type)
+            s += 'Matrix_{0}:\n  {1}'.format(str(count), str(tdata.matrix).replace('\n', '\n  '))
+            s += '\n'
+            count += 1
+
+        return s
+
+    def _pack_content(self):
+        return None
+
+    def _unpack_content(self, content):
+        idx = 0
+        self._data = []
+        while idx < len(content):
+            encoded_string = content[idx:idx+20]
+            idx += 20
+            name = MessageBase.decode_text(encoded_string, MessageBase.IANA_CHARACTER_SET_ASCII)
+            s = struct.Struct('> B B')
+            type_values = s.unpack(content[idx:idx+2])
+            idx += 2
+
+            s = struct.Struct('> f f f f f f f f f f f f')
+            values = s.unpack(content[idx:idx+(12*4)])
+            idx += (12*4)
+            matrix = np.asarray([[values[0], values[3], values[6], values[9]],
+                                    [values[1], values[4], values[7], values[10]],
+                                    [values[2], values[5], values[8], values[11]],
+                                    [0, 0, 0, 1]])
+
+            self._data.append(TData(name, type_values[0], matrix))
 
 class StringMessage(MessageBase):
     def __init__(self, string=None, timestamp=None, device_name=None):
@@ -674,4 +742,5 @@ message_type_to_class_constructor = {
         "IMAGE": ImageMessage,
         "STRING": StringMessage,
         "POINT": PointMessage,
+        "TDATA": TDataMessage
     }
